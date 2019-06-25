@@ -1,0 +1,359 @@
+---
+title: "Milestone Report for Capstone Project - Word Predictor"
+author: "RP"
+date: "June 24, 2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# <span style="color:dark grey"> Introduction </span>
+
+The goal of this analysis to showcase the very first phase of the Capstone project development i.e. SwiftKey Next Word Prediction. So, some preliminary steps needs to be performed before creating the Word Prediction Model.
+ 
+*Loading of Data an Cleaning of data will be performed before organizing/creating the dateset for our analysis.*
+
+This exercise will be comprised of below steps:
+1. Demonstrate that you've downloaded the data and have successfully loaded it in.
+2. Create a basic report of summary statistics about the data sets.
+3. Report any interesting findings that you amassed so far.
+4. Get feedback on your plans for creating a prediction algorithm and Shiny app
+
+<span style="color:blue"> **English Language dataset will be used along with dictonary to predict the next word** </span>
+
+#<span style="color:dark grey"> 1. Loading Libraries and Datasets </span>
+
+1. Loading the Necessary Libraries.
+
+```{r warning=FALSE, message=FALSE}
+library(dplyr)
+library(tidyr)
+library(tm)
+library(ggplot2)
+library(lexicon)
+library(sentimentr)
+library(stringr)
+library(wordcloud)
+library(caret)
+library(tokenizers)
+library(ngram)
+library(NLP)
+
+```
+
+2. Setting the working Directory.
+
+3. Reading of files from the directory.
+  - Reading Twitter file by first establishing connection and then closing the connection after reading it.
+    - Reading US News file and Blog by establishing connection and then closing the connection after reading it.
+    - All these files are from English Language.
+
+```{r warning=FALSE}
+setwd("C:/Users/r.pratap.singh/Desktop/JohnHopkins/capstone/Coursera-SwiftKey/final/en_US")
+
+# US Twitter File
+us_twitter <- "en_US_twitter.txt"
+con_tw <- file(us_twitter,open="r")
+line_tw <- readLines(con_tw) 
+long_tw <- length(line_tw)
+twitter_size <- round((file.info(us_twitter)$size) /1024^2,1)
+close(con_tw)
+
+# US News File
+us_news <- "en_US_news.txt"
+con_news <- file(us_news,open="r")
+line_news <- readLines(con_news) 
+long_news <- length(line_news)
+news_size <- round((file.info(us_news)$size) /1024^2,1)
+close(con_news)
+
+# US blog File
+us_blog <- "en_US_blogs.txt"
+con_blog <- file(us_blog,open="r")
+line_blog <- readLines(con_blog) 
+long_blog <- length(line_news)
+blogs_size <- round((file.info(us_blog)$size) /1024^2,1)
+close(con_blog)
+```
+
+#<span style="color:dark grey"> 2. Static Summary of Datasets </span>
+
+Calculating the Datasets Size, number of lines present and total number of words present in dataset.
+
+```{r warning=FALSE}
+twitterWC <- sum(sapply(gregexpr("\\S+", line_tw), length))
+newsWC <- sum(sapply(gregexpr("\\S+", line_news), length))
+blogWC <- sum(sapply(gregexpr("\\S+", line_blog), length))
+
+d1 <- cbind(c(twitter_size, blogs_size, news_size), c(long_tw, long_blog, long_news), c(twitterWC, blogWC, newsWC))
+rownames(d1) <- c("Twitter", "Blogs", "News")
+colnames(d1) <- c("Size in  MB " , " Number of Lines ", " Number of Words")
+```
+
+<span style="color:blue"> **Statistics table** </span>
+
+```{r warning=FALSE, message=FALSE}
+library(kableExtra)
+kable(d1, "html") %>%
+  kable_styling(full_width = F)
+```
+
+#<span style="color:dark grey"> 3. Exploratory Analysis and Data Cleansing </span>
+
+##<span style="color:blue"> 3.1. Sampling </span>
+
+In order to Move ahead with Prediction Model building, an appropriate sample of data needs to be taken to predict the word. Taking large sample can compromise on the faster prediciting capability of word. So, we will keep ourselves restricted to 5000 lines sample each from News, Twitter and Blogs Dataset.
+
+```{r warning=FALSE}
+set.seed(5)
+
+sample_tweet <- sample(line_tw, size = 5000)
+sample_blog <- sample(line_blog, size = 5000)
+sample_news <- sample(line_news, size = 5000)
+
+sample_all <- as.character(rbind(sample_tweet, sample_blog, sample_news))
+```
+
+##<span style="color:blue"> 3.2. Data Cleaning - Tokenization & Removing Profanities </span>
+
+- `tokenize_fun` function created to clean the data and remove profanity.
+- Function convert all Characters to Lowercase.
+- Second part is to remove profane words by taking the list out Lexicon package using `profanity_alvarez`.
+- Removes Punctuation from the resultant set.
+- Last part is to remove Numbers, Special characters, extra whitespaces and blank lines from the set.
+- `sample_all` sample dataset is used to call the function to Clean the data and store it back in `sample_all` dataset.
+- Last step is to remove 'ies', 'er', 'ed' and 'ing' after removing the profanities and storing it back to `sample_all'.
+
+```{r warning=FALSE}
+############# 1. Tokenization ############################
+tokenize_fun <- function(x){
+  # convert to lowercase
+  x <- tolower(x)
+  ###################### 2. Removing Prfanity #######################
+  # getting the profane list of words from lexicon library profanity_alvarez
+  profane <- unique(tolower(lexicon::profanity_alvarez))
+  profane <- gsub("\\(", "c", profane)
+  for (i in 1:length(profane)){
+    sample_all <- gsub(profane[i],"", sample_all)
+  }
+  # remove punctuation
+  x <- removePunctuation(x)
+  # remove numbers 
+  x <- removeNumbers(x)
+  # Removing blank line
+  x <- x[which(x != " ")]
+  # Removing all Special Characters apart from alphabets
+  x <- gsub("[^a-zA-Z]", " " , x )
+  # remove numbers 
+  x <- stripWhitespace(x)
+  return(x)
+}
+
+sample_all <- tokenize_fun(sample_all)
+
+# remove independent ing, ed, ies and er after removing profanity
+sample_all <- gsub("[^a-z]ing |[^a-z]ed |[^a-z]ies |[^a-z]er |[^a-z]s |[^a-z]e ", " ", sample_all)
+```
+
+
+##<span style="color:blue"> 3.3. Exploratory Data Analysis </span>
+
+- `sample_all` stores all the clean data. It will be used as a base for **N-Gram** Modeling.
+
+*`sample_all_1` is created just to check the occurance of words removing articles, fillers etc. This variable is just for illustration purpose*
+
+*`tokenize_ngrams` function is used to distribute the data structure to 1-Gram for `sample_all_1`. This is for Illustration Purpose.*
+
+```{r warning=FALSE}
+# Block to remove articles and fillers for Plot
+sample_all_1 <- gsub("[^a-z]is |[^a-z]am |[^a-z]are |[^a-z]an |[^a-z]the |[^a-z]so ",
+                     " ", sample_all)
+sample_all_1 <- gsub("[^a-z]was |[^a-z]were |[^a-z]a |[^a-z]in |[^a-z]on |[^a-z]to |[^a-z]if ",
+                     " ", sample_all_1)
+sample_all_1 <- gsub("[^a-z]and |[^a-z]of |[^a-z]we |[^a-z]you |[^a-z]at |[^a-z]as |[^a-z]or ",
+                     " ", sample_all_1)
+sample_all_1 <- gsub("[^a-z]his |[^a-z]that |[^a-z]they |[^a-z]for |[^a-z]it |[^a-z]my ",
+                     " ", sample_all_1)
+sample_all_1 <- gsub("[^a-z]has |[^a-z]have |[^a-z]this |[^a-z]not |[^a-z]her |[^a-z]or |[^a-z]i ",
+                     " ", sample_all_1)
+sample_all_1 <- gsub("[^a-z]he |[^a-z]be |[^a-z]she |[^a-z]by |[^a-z]a |[^a-z]in |[^a-z]its ",
+                     " ", sample_all_1)
+
+# Tokenizing with ngram where n= 1
+sample_all_1 <- tokenize_ngrams(sample_all_1, n = 1)
+```
+
+- `sample_all_2` created from `sample_all` using `tokenize_ngrams` function with value **2** as **2-Gram** Modeling.
+- `sample_all_3` created from `sample_all` using `tokenize_ngrams` function with value **3** as **3-Gram** Modeling.
+- `sample_all_4` created from `sample_all` using `tokenize_ngrams` function with value **4** as **4-Gram** Modeling.
+- `sample_word` created from `sample_all` using `tokenize_ngrams` function with value **1** as **1-Gram** Modeling.
+
+```{r warning=FALSE}
+# Tokenizing with ngram where n= 2
+sample_all_2 <- tokenize_ngrams(sample_all, n = 2)
+# Tokenizing with ngram where n= 3
+sample_all_3 <- tokenize_ngrams(sample_all, n = 3)
+# Tokenizing with ngram where n= 4
+sample_all_4 <- tokenize_ngrams(sample_all, n = 4)
+# Tokenizing with ngram where n= 1
+sample_word <- tokenize_ngrams(sample_all, n = 1)
+```
+
+
+- `s1`dataframe created from `sample_all_1` first unlisting it then creating table for the occurances by arranging in Descending order. *This is for Illustration Purpose*
+
+- `s2`dataframe created from `sample_all_2` first unlisting it then creating table for the occurances by arranging in Descending order. ** For 2-Gram Model**.
+- `s3`dataframe created from `sample_all_2` first unlisting it then creating table for the occurances by arranging in Descending order. ** For 3-Gram Model**.
+- `s4`dataframe created from `sample_all_2` first unlisting it then creating table for the occurances by arranging in Descending order. ** For 4-Gram Model**.
+- `w1`dataframe created from `sample_word` first unlisting it then creating table for the occurances by arranging in Descending order. ** For 2-Gram Model**.
+
+```{r warning=FALSE}
+# Creating dataframe for ngram and store it in descending order frequency
+s1 <- cbind.data.frame(table(unlist(sample_all_1)))  %>%
+  arrange(desc(Freq)) 
+s2 <- cbind.data.frame(table(unlist(sample_all_2)))  %>%
+  arrange(desc(Freq))
+s3 <- cbind.data.frame(table(unlist(sample_all_3)))  %>%
+  arrange(desc(Freq))
+s4 <- cbind.data.frame(table(unlist(sample_all_4)))   %>%
+  arrange(desc(Freq))
+w1 <- cbind.data.frame(table(unlist(sample_word))) %>%
+  arrange(desc(Freq))
+```
+
+##<span style="color:blue"> 3.4. Word Clouds & Bar Plots for each N-Gram Model </span>
+
+- **Word Cloud for 1-Gram from `s1` (Illustration dataset) filtering on minimum 350 occurrance.**
+
+```{r warning=FALSE, message=FALSE}
+wordcloud(words = s1$Var1, freq = s1$Freq, min.freq = 350, colors = brewer.pal(8,"Paired"))
+```
+
+- **Word Cloud for 1-Gram from `w1` filtering on minimum 500 occurrance.**
+
+```{r warning=FALSE, message=FALSE}
+wordcloud(words = w1$Var1, freq = s1$Freq, min.freq = 500, colors = brewer.pal(8,"Paired"))
+```
+
+- **Word Cloud for 2-Gram from `s2` filtering on minimum 200 occurrance. Creation of Bar Plot for 2-Gram.**
+
+```{r warning=FALSE, message=FALSE}
+wordcloud(words = s2$Var1, freq = s2$Freq, min.freq = 200, colors = brewer.pal(8,"Paired"))
+# BarPlot for 2 Ngram model
+ggplot(data=s2[1:20,], aes(x=reorder(Var1,-Freq), y = Freq) )+
+  geom_bar(stat = "identity", fill ="sky blue", color="blue") +
+  theme(axis.text.x=element_text(angle=90)) +
+  xlab("2Gram words ") +
+  ylab("Frequency of Words")
+```
+
+- **Word Cloud for 3-Gram from `s3` filtering on minimum 42 occurrance. Creation of Bar Plot for 3-Gram.**
+
+```{r warning=FALSE, message=FALSE}
+wordcloud(words = s3$Var1, freq = s3$Freq, min.freq = 42, colors = brewer.pal(8,"Paired"))
+# BarPlot for 3 Ngram model
+ggplot(data=s3[1:20,], aes(x=reorder(Var1,-Freq), y = Freq) )+
+  geom_bar(stat = "identity", fill ="sky blue", color="blue") +
+  theme(axis.text.x=element_text(angle=90)) +
+  xlab("3Gram words ") +
+  ylab("Frequency of Words")
+```
+
+- **Word Cloud for 4-Gram from `s4` filtering on minimum 8 occurrance. Creation of Bar Plot for 4-Gram.**
+
+```{r warning=FALSE, message=FALSE}
+wordcloud(words = s4$Var1, freq = s4$Freq, min.freq = 8, colors = brewer.pal(8,"Paired"))
+# BarPlot for 4 Ngram model
+ggplot(data=s4[1:20,], aes(x=reorder(Var1,-Freq), y = Freq) )+
+  geom_bar(stat = "identity", fill ="sky blue", color="blue") +
+  theme(axis.text.x=element_text(angle=90)) +
+  xlab("4Gram words ") +
+  ylab("Frequency of Words")
+```
+
+##<span style="color:blue"> 3.5. Number of words for 50% and 90% Coverage </span>
+
+- Function `coverage` created to check the number of words for Percentage Coverage. Object and Percent is passed as input and it returns the number of words.
+
+```{r warning=FALSE}
+coverage <- function(object, percent) {
+  cover <- 0
+  sumCover <- sum(object)
+  for(i in 1:length(object)) {
+    cover <- cover + object[i]
+    if(cover >=  percent*(sumCover)){break}
+  }
+  return(i)
+}
+```
+
+##<span style="color:maroon">**For 50% Coverage Number of Words Required are :** </span> `r coverage(w1$Freq, .5)` 
+
+##<span style="color:maroon">**For 90% Coverage Number of Words Required are :** </span> `r coverage(w1$Freq, .9)`
+
+##<span style="color:blue"> 3.6. Storing the Dataframe for Prediction </span>
+
+- Separating the dataframes to words and out column where **out** column contains the lastword from the N-Gram Model. This out Column will act as predicted word for the Words Column.
+
+- **These Dataframes will be used for Predicting the Words**.
+
+```{r warning=FALSE}
+s4 <- separate(s4, Var1, into = c("words", "out"), sep = " (?=[^ ]+$)")
+s3 <- separate(s3, Var1, into = c("words", "out"), sep = " (?=[^ ]+$)")
+s2 <- separate(s2, Var1, into = c("words", "out"), sep = " (?=[^ ]+$)")
+```
+
+##<span style="color:blue"> 3.7. N-gram Pfediction Model Dataset Sample  </span>
+
+<span style="color:blue"> **This is to show the structure and few samples of Dataset** </span>
+
+** Dataset Structure created from S4**
+```{r warning=FALSE}
+s4[1:10,]
+```
+
+** Dataset Structure created from S3**
+```{r warning=FALSE}
+s3[1:10,]
+```
+
+** Dataset Structure created from S2**
+```{r warning=FALSE}
+s2[1:10,]
+```
+
+** Dataset Structure created from W1**
+```{r warning=FALSE}
+w1[1:10,]
+```
+
+Below Part will be executed to Store the Fles in RDS Format:
+
+- *saveRDS(w1, file = "Ngram1.rds")* 
+- *saveRDS(s2, file = "Ngram2.rds")* 
+- *saveRDS(s3, file = "Ngram3.rds")* 
+- *saveRDS(s4, file = "Ngram4.rds")*
+
+#<span style="color:dark grey"> 4. Plans for creating a prediction algorithm and Shiny app </span>
+
+<span style="color:blue"> **In order to build the N-gram, I've processed the N-grams by breaking them in several different indexes. Each of the N-grams is saved as intermediary files, as follows:**</span>
+
+1. A file for the "n-gram" to "index" mapping (since the words take most of the memory space, I'll keep them in only one place).
+2. These will be saved as RDS files and will be loaded during Shiny app Server Program.
+3. A file for the "n-1 gram", the prior. This has the indexes in the N-1 "n-gram to index" mapping (calculated in a prev step)  
+4. A file for the "1-gram" posterior. This has the indexes in the 1-gram "n-gram to index" mapping (calculated in first step) 
+5. A file with the calculated probabilities, mapping N-gram to calculated probabilities (sorted decreasingly by probability).  
+
+<span style="color:blue">**Shiny App Functionality:**</span>
+
+6. Load the "term frequency" file, sorted decreasingly in a previous step by frequency.
+7. Extract the "N-gram to index" vector, save extract the priors (N-1-Grams), posteriors (1-Grams).
+8. Calculate the conditional probabilities for the N-Grams | N-1-Grams, using MLE Extract Top 20 Predicted words.
+9. Create the **Back-Off** search Model to search N, N-1 and N-2 Model.
+10. Shiny App will be Created display the top 3 words of prediction (based on decreasing Frequency  of words combination occurance)
+11. Shiny App will also display the WordCloud of Next Predicted Word.
+
+
+

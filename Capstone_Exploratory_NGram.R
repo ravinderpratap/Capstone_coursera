@@ -17,21 +17,21 @@ setwd("C:/Users/r.pratap.singh/Desktop/JohnHopkins/capstone/Coursera-SwiftKey/fi
 
 # Reading of files
 # US Twitter File
-us_twitter <- "en_US.twitter.txt"
+us_twitter <- "en_US_twitter.txt"
 con_tw <- file(us_twitter,open="r")
 line_tw <- readLines(con_tw) 
 long_tw <- length(line_tw)
 close(con_tw)
 
 # US News File
-us_news <- "en_US.news.txt"
+us_news <- "en_US_news.txt"
 con_news <- file(us_news,open="r")
 line_news <- readLines(con_news) 
 long_news <- length(line_news)
 close(con_news)
 
 # US blog File
-us_blog <- "en_US.blogs.txt"
+us_blog <- "en_US_blogs.txt"
 con_blog <- file(us_blog,open="r")
 line_blog <- readLines(con_blog) 
 long_blog <- length(line_news)
@@ -182,7 +182,7 @@ s3 <- separate(s3, Var1, into = c("words", "out"), sep = " (?=[^ ]+$)")
 s2 <- separate(s2, Var1, into = c("words", "out"), sep = " (?=[^ ]+$)")
 
 #Set Working Directory
-setwd("C:/Users/r.pratap.singh/Desktop/JohnHopkins/capstone/Final_capstone/Capstone_final/Capstone_coursera/")
+setwd("C:/Users/r.pratap.singh/Desktop/JohnHopkins/capstone/Final_capstone/Capstone_final/")
 
 saveRDS(w1, file = "Ngram1.rds")
 saveRDS(s2, file = "Ngram2.rds")
