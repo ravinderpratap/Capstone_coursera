@@ -1,0 +1,12 @@
+name: word_predictor
+title: word_predictor
+username:
+account: rpsingh85
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 996917
+bundleId: 2176354
+url: https://rpsingh85.shinyapps.io/word_predictor/
+when: 1561443929.24069
+asMultiple: FALSE
+asStatic: FALSE
